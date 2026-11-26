@@ -10,8 +10,10 @@ exact bytes at the output path, checking on the way that the file
 is a whole PNG inside the competition's size limits.
 
 It never reaches for the network and never reads anything outside
-this repository. It writes through a temporary file and moves it
-into place, so a failed run leaves no half-written output behind.
+this repository. It writes straight to the output path — no temporary
+file in the output folder, which the grader forbids — and removes a
+half-written output if the write fails, so a failed run leaves no
+half-written output behind.
 """
 
 import hashlib
@@ -66,16 +68,18 @@ def deliver():
     """Copy entry.png to the output path and report what was written."""
     size, width, height = check_image(SOURCE)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    directory = os.path.dirname(OUTPUT)
-    handle, temporary = tempfile.mkstemp(dir=directory, prefix=".entry-")
+    # Write straight to the output path: the grader requires the output
+    # folder to hold exactly the one entry file, so no temporary file
+    # may appear in it. The file is made world-readable (0644) so the
+    # grader can read it whoever runs the check.
     try:
-        with os.fdopen(handle, "wb") as out:
+        with open(OUTPUT, "wb") as out:
             with open(SOURCE, "rb") as source:
                 shutil.copyfileobj(source, out, 65536)
-        os.replace(temporary, OUTPUT)
+        os.chmod(OUTPUT, 0o644)
     except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        if os.path.exists(OUTPUT):
+            os.unlink(OUTPUT)
         raise
     if sha256_of(OUTPUT) != sha256_of(SOURCE):
         raise ValueError("output bytes differ from the bundled entry.png")
